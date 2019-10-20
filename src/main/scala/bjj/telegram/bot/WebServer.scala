@@ -1,13 +1,14 @@
 package bjj.telegram.bot
 
+import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.HttpMethods.GET
 import akka.http.scaladsl.model._
 import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.Flow
 
 import scala.concurrent.ExecutionContextExecutor
-import scala.io.StdIn
 
 object WebServer {
 
@@ -16,7 +17,7 @@ object WebServer {
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-    val requestHandler: HttpRequest => HttpResponse = {
+    val requestHandler: Flow[HttpRequest, HttpResponse, NotUsed] = Flow[HttpRequest].map({
       case HttpRequest(GET, Uri.Path("/"), _, _, _) =>
         HttpResponse(entity = HttpEntity(
           ContentTypes.`text/html(UTF-8)`,
@@ -31,15 +32,12 @@ object WebServer {
       case r: HttpRequest =>
         r.discardEntityBytes() // important to drain incoming HTTP Entity stream
         HttpResponse(404, entity = "Unknown resource!")
-    }
+    })
 
-    val bindingFuture = Http().bindAndHandleSync(requestHandler, "0.0.0.0", 8191)
+    val bindingFuture = Http().bindAndHandle(requestHandler, "0.0.0.0", 8191)
     println(s"Server online at http://localhost:8191/\nPress RETURN to stop...")
-    StdIn.readLine() // let it run until user presses return
-    println(s"Stopping server.")
-    bindingFuture
+    Runtime.getRuntime.addShutdownHook(new Thread(() => bindingFuture
       .flatMap(_.unbind()) // trigger unbinding from the port
-      .onComplete(_ => system.terminate()) // and shutdown when done
-    println("Done.")
+      .onComplete(_ => system.terminate())))// and shutdown when done)
   }
 }
