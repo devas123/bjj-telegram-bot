@@ -1,0 +1,12 @@
+language: scala
+scala:
+  - 2.12.7
+branches:
+  only:
+    - master
+notifications:
+  email:
+    recipients:
+      - devas7sky@gmail.com
+jdk:
+  - oraclejdk8
