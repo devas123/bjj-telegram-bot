@@ -35,3 +35,6 @@ libraryDependencies ++= Seq(
 
 enablePlugins(JavaAppPackaging)
 packageName in Universal := "application"
+
+updateOptions := updateOptions.value.withGigahorse(false)
+
