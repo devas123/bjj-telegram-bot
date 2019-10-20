@@ -9,4 +9,4 @@ notifications:
     recipients:
       - devas7sky@gmail.com
 jdk:
-  - oraclejdk8
+  - openjdk8
