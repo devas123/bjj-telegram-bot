@@ -10,7 +10,7 @@ node {
         if (env.BRANCH_NAME == 'master' && (currentBuild.result == null || currentBuild.result == 'SUCCESS')) {
             stage('deploy_artifactory') {
                 docker.image('hseeberger/scala-sbt:8u212_1.2.8_2.12.9').inside('-v /usr/share/sbt/conf:/usr/share/sbt/conf') {
-                    sh 'sbt ";publish; dist"'
+                    sh 'sbt ";publish; universal:packageBin"'
                 }
             }
             stage('docker') {
