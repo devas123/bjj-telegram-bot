@@ -33,11 +33,13 @@ object WebServer {
         HttpResponse(404, entity = "Unknown resource!")
     }
 
-    val bindingFuture = Http().bindAndHandleSync(requestHandler, "localhost", 8191)
+    val bindingFuture = Http().bindAndHandleSync(requestHandler, "0.0.0.0", 8191)
     println(s"Server online at http://localhost:8191/\nPress RETURN to stop...")
     StdIn.readLine() // let it run until user presses return
+    println(s"Stopping server.")
     bindingFuture
       .flatMap(_.unbind()) // trigger unbinding from the port
       .onComplete(_ => system.terminate()) // and shutdown when done
+    println("Done.")
   }
 }

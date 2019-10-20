@@ -34,7 +34,11 @@ node {
                     }
                 }
             }
-
+            if (env.BRANCH_NAME == 'master' && (currentBuild.result == null || currentBuild.result == 'SUCCESS')) {
+                stage('service_update') {
+                    sh 'curl -X POST http://188.225.25.77:9000/api/webhooks/44b69cbb-1cb9-4713-b0f6-6089e72e0942'
+                }
+            }
         }
     } finally {
         //unit tests results
