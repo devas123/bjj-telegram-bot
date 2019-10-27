@@ -9,7 +9,7 @@ scalaVersion := "2.12.7"
 maintainer := "devas7sky@gmail.com"
 
 val akkaHttpVersion = "10.1.10"
-val akkaVersion = "2.5.23"
+val akkaVersion = "2.5.26"
 
 credentials += Credentials("Some Nexus Repository Manager", "95.169.186.20:8081", "admin", "admin123")
 credentials += Credentials("Sonatype Nexus Repository Manager", "95.169.186.20", "admin", "admin123")
@@ -28,10 +28,15 @@ publishTo := {
 }
 
 libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-http"   % akkaHttpVersion,
+  "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-  "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion
+  "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
+  "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
+  "ch.qos.logback" % "logback-classic" % "1.2.3"
 )
+
+libraryDependencies += "com.google.guava" % "guava" % "28.1-jre"
+
 
 enablePlugins(JavaAppPackaging)
 packageName in Universal := "application"

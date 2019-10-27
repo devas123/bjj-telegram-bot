@@ -1,43 +1,27 @@
 package bjj.telegram.bot
 
-import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.HttpMethods.GET
-import akka.http.scaladsl.model._
-import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.Flow
+import akka.actor.{ActorSystem, PoisonPill, Props}
+import akka.event.slf4j.Logger
+import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.ExecutionContextExecutor
+import scala.io.StdIn
 
 object WebServer {
+  implicit val system: ActorSystem = ActorSystem()
+  implicit val executionContext: ExecutionContextExecutor = system.dispatcher
+  private val logger = Logger("main")
 
   def main(args: Array[String]) {
-    implicit val system: ActorSystem = ActorSystem()
-    implicit val materializer: ActorMaterializer = ActorMaterializer()
-    implicit val executionContext: ExecutionContextExecutor = system.dispatcher
+    val config = ConfigFactory.load()
+    val token = config.getString("bot.token")
+    val serverActor = system.actorOf(Props(new ServerActorSupervisor(token)), name = "serverSupervisor")
 
-    val requestHandler: Flow[HttpRequest, HttpResponse, NotUsed] = Flow[HttpRequest].map({
-      case HttpRequest(GET, Uri.Path("/"), _, _, _) =>
-        HttpResponse(entity = HttpEntity(
-          ContentTypes.`text/html(UTF-8)`,
-          "<html><body>Hello world!</body></html>"))
-
-      case HttpRequest(GET, Uri.Path("/ping"), _, _, _) =>
-        HttpResponse(entity = "PONG!")
-
-      case HttpRequest(GET, Uri.Path("/crash"), _, _, _) =>
-        sys.error("BOOM!")
-
-      case r: HttpRequest =>
-        r.discardEntityBytes() // important to drain incoming HTTP Entity stream
-        HttpResponse(404, entity = "Unknown resource!")
-    })
-
-    val bindingFuture = Http().bindAndHandle(requestHandler, "0.0.0.0", 8191)
-    println(s"Server online at http://localhost:8191/\nPress RETURN to stop...")
-    Runtime.getRuntime.addShutdownHook(new Thread(() => bindingFuture
-      .flatMap(_.unbind()) // trigger unbinding from the port
-      .onComplete(_ => system.terminate())))// and shutdown when done)
+    logger.info(s"Server online at http://localhost:8191/")
+    if (args.contains("dev")) {
+      logger.info("Dev mode, Press RETURN to stop...")
+      StdIn.readLine()
+      serverActor ! PoisonPill
+    }
   }
 }
