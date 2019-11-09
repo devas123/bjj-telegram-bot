@@ -1,27 +1,25 @@
 package bjj.telegram.bot
 
-import akka.actor.{ActorSystem, PoisonPill, Props}
-import akka.event.slf4j.Logger
-import com.typesafe.config.ConfigFactory
+import akka.actor.{ActorRef, PoisonPill}
+import bjj.telegram.bot.di.MainModule
 
-import scala.concurrent.ExecutionContextExecutor
 import scala.io.StdIn
 
-object WebServer {
-  implicit val system: ActorSystem = ActorSystem()
-  implicit val executionContext: ExecutionContextExecutor = system.dispatcher
-  private val logger = Logger("main")
+object WebServer extends MainModule {
 
   def main(args: Array[String]) {
-    val config = ConfigFactory.load()
-    val token = config.getString("bot.token")
-    val serverActor = system.actorOf(Props(new ServerActorSupervisor(token)), name = "serverSupervisor")
-
+    import com.softwaremill.macwire.akkasupport._
+    val devMode = args.contains("dev")
+    val serverActor: ActorRef = wireActor[ServerActorSupervisor]("serverActorSupervisor")
     logger.info(s"Server online at http://localhost:8191/")
-    if (args.contains("dev")) {
+    if (devMode) {
       logger.info("Dev mode, Press RETURN to stop...")
       StdIn.readLine()
       serverActor ! PoisonPill
+      mongoDbAPI.stop()
+      system.terminate().andThen({
+        case _ => System.exit(0)
+      })
     }
   }
 }
