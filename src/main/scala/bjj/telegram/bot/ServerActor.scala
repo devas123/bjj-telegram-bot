@@ -1,6 +1,6 @@
 package bjj.telegram.bot
 
-import java.util.UUID
+import java.util.{Date, UUID}
 
 import akka.NotUsed
 import akka.actor.{Actor, ActorLogging, ActorSystem, PoisonPill}
@@ -14,19 +14,21 @@ import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Flow
 import bjj.telegram.bot.api.ApiHelper.apiUri
-import bjj.telegram.bot.api.{ApiRequest, UpdateReceiver}
+import bjj.telegram.bot.api.{ApiRequest, MongoDbAPI, UpdateReceiver}
 import bjj.telegram.bot.method.SendMessage
 import bjj.telegram.bot.model.TelegramBotJsonProtocol._
 import bjj.telegram.bot.model._
+import bjj.telegram.bot.model.domain.ClassDescription
 import com.google.common.cache.CacheBuilder
 import com.typesafe.config.ConfigFactory
+import org.bson.types.ObjectId
 import spray.json._
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.Try
 
-class ServerActor extends Actor with ActorLogging with SprayJsonSupport {
+class ServerActor(private val devMode: Boolean = false, private val mongodbApi: MongoDbAPI) extends Actor with ActorLogging with SprayJsonSupport {
   implicit val jsonStreamingSupport: JsonEntityStreamingSupport =
     EntityStreamingSupport.json()
   implicit val executionContext: ExecutionContextExecutor = context.dispatcher
@@ -42,7 +44,6 @@ class ServerActor extends Actor with ActorLogging with SprayJsonSupport {
 
   override def preStart(): Unit = {
     log.info("Starting!")
-
     Runtime.getRuntime.addShutdownHook(new Thread(() => bindingFuture
       .flatMap(_.unbind())
       .onComplete(_ => {
@@ -86,7 +87,14 @@ class ServerActor extends Actor with ActorLogging with SprayJsonSupport {
       .via(apiRequestToHttpRequest)
       .filter(_.nonEmpty)
       .map(_.get)
-      .mapAsyncUnordered(availableProcessors) { request => Http().singleRequest(request._1).map(resp => Try(resp) -> request._2) }
+      .mapAsyncUnordered(availableProcessors) { request =>
+        if (devMode) {
+          log.info(s"Sending to telegram is skipped because we're in dev mode. Mesage was: ${request._1}")
+          Future.successful(Try(HttpResponse()) -> request._2)
+        } else {
+          Http().singleRequest(request._1).map(resp => Try(resp) -> request._2)
+        }
+      }
       .via(httpResponse)
 
 
@@ -137,8 +145,57 @@ class ServerActor extends Actor with ActorLogging with SprayJsonSupport {
   val messageLogicFlow: Flow[Option[Message], ApiRequest, NotUsed] = Flow[Option[Message]]
     .map({
       case Some(msg) =>
-        ApiRequest(SendMessage(msg.chat.id, s"I received a message ${msg.message_id}"))
+        val default = s"Чето я ничо не понял... Чо это такое вообще?? (${msg.message_id})"
+        val reply = msg match {
+          case TextMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, t) =>
+            log.info(s"Received text message: $message_id, $from, $date, $chat, $forward_from, $forward_date, $reply_to_message, $t")
+            val text = t.trim
+
+            if (text.startsWith("/test")) {
+              "Пассед, епта..."
+            } else if (text.startsWith("/create")) {
+              val description = text.stripPrefix("/create")
+              if (description.nonEmpty) {
+                Await.result(mongodbApi.saveClassDescritpion(ClassDescription(ObjectId.get(), chat.id.toString, None, s"$description (${from.first_name}, ${from.username.getOrElse("")})", None, None, new Date())).toFuture(), 10.seconds)
+                s"Создал новую тренировку: $description. By ${from.first_name}, ${from.username.getOrElse("")}"
+              } else {
+                "Описание тренировки: когда, во сколько, какая тема, всё такое..."
+              }
+            } else if (text.startsWith("/info")) {
+              val cls = Await.result(mongodbApi.getLatestClassDescription(chat.id.toString).toFuture(), 10.seconds)
+              if (cls != null && cls.creationTime.after(new Date())) {
+                s"Следующая тренировка: ${cls.description}"
+              } else {
+                s"Нет информации за следующую тренировку."
+              }
+            }
+            else {
+              default
+            }
+          case AudioMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, audio) => default
+          case DocumentMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, document) => default
+          case PhotoMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, caption, photo) => default
+          case StickerMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, sticker) => default
+          case VideoMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, caption, video) => default
+          case VoiceMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, voice) => default
+          case ContactMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, contact) => default
+          case LocationMessage(message_id, from, date, chat, forward_from, forward_date, reply_to_message, location) => default
+          case MemberAddedToGroup(message_id, from, date, chat, forward_from, forward_date, reply_to_message, new_chat_participant) => default
+          case MemberRemovedFromGroup(message_id, from, date, chat, forward_from, forward_date, reply_to_message, left_chat_participant) => default
+          case GroupTitleChanged(message_id, from, date, chat, forward_from, forward_date, reply_to_message, new_chat_title) => default
+          case GroupPhotoChanged(message_id, from, date, chat, forward_from, forward_date, reply_to_message, new_chat_photo) => default
+          case GroupPhotoDeleted(message_id, from, date, chat, forward_from, forward_date, reply_to_message) => default
+          case GroupChatCreated(message_id, from, date, chat, forward_from, forward_date, reply_to_message) => default
+        }
+        log.info(s"Reply is: $reply")
+        ApiRequest(SendMessage(msg.chat.id, reply))
+
       case None => ApiRequest(SendMessage(0L, s"I received no message ;("))
+    })
+    .recover({
+      case t =>
+        log.error("Exception.", t)
+        ApiRequest(SendMessage(0L, "Something's wrong, check logs."))
     })
 
   val asyncResponseFlow: Flow[Option[Message], HttpResponse, NotUsed] =
@@ -161,7 +218,7 @@ class ServerActor extends Actor with ActorLogging with SprayJsonSupport {
     .via(updateReceiver)
     .log("/new_message Request")
     .via(asyncResponseFlow)
-    .log("/new_message Response:")
+    .log("/new_message Response")
 
   val bindingFuture: Future[Http.ServerBinding] = Http().bindAndHandle(requestHandler, "0.0.0.0", PORT)
 

@@ -1,15 +1,16 @@
 package bjj.telegram.bot
 
 import akka.actor.SupervisorStrategy.{Escalate, Restart}
-import akka.actor.{Actor, ActorLogging, PoisonPill, Props}
+import akka.actor.{Actor, ActorLogging, PoisonPill}
+import bjj.telegram.bot.api.MongoDbAPI
+import bjj.telegram.bot.di.ConfigModule
+import com.softwaremill.macwire.akkasupport._
 
 import scala.concurrent.duration._
 
-class ServerActorSupervisor(token: String) extends Actor with ActorLogging{
-
-  private val server = context.actorOf(Props(classOf[ServerActor]))
-
+class ServerActorSupervisor(devMode: Boolean = false, private val mongoDbAPI: MongoDbAPI) extends Actor with ConfigModule with ActorLogging{
   import akka.actor.{OneForOneStrategy, SupervisorStrategy}
+  private val server = wireActor[ServerActor]("server")
 
   private val strategy = OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1.minute) {
     case _: NullPointerException     => Restart
@@ -25,7 +26,6 @@ class ServerActorSupervisor(token: String) extends Actor with ActorLogging{
   override def receive: Receive = {
     case p@PoisonPill =>
       server ! p
-      context.system.terminate()
     case _ => log.warning("Unknown message")
   }
 }
