@@ -163,7 +163,7 @@ class ServerActor(private val devMode: Boolean = false, private val mongodbApi: 
               }
             } else if (text.startsWith("/info")) {
               val cls = Await.result(mongodbApi.getLatestClassDescription(chat.id.toString).toFuture(), 10.seconds)
-              if (cls != null && cls.creationTime.after(new Date())) {
+              if (cls != null && cls.creationTime.after(new Date(System.currentTimeMillis() - 7 * 24 * 3600 * 1000))) {
                 s"Следующая тренировка: ${cls.description}"
               } else {
                 s"Нет информации за следующую тренировку."
